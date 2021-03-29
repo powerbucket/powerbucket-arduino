@@ -8,7 +8,7 @@
 #include "driver/rtc_io.h"
 #include "esp_camera.h"
 #define uS_TO_S_FACTOR 1000000ULL  /* Conversion factor for micro seconds to seconds */
-#define TIME_TO_SLEEP  30         /* Time ESP32 will go to sleep (in seconds) */
+#define TIME_TO_SLEEP  60         /* Time ESP32 will go to sleep (in seconds) */
 #define LED_BUILTIN 4
 
 /* Tony's House 
@@ -33,11 +33,9 @@ const char* password = "Steggers";
 
 //Your Domain name with URL path or IP address with path
 //String serverName = "http://127.0.0.1:8000/accounts/login/";
-String loginUrl = "http://powerbucket-test.herokuapp.com/accounts/login/";
-String indexUrl = "http://powerbucket-test.herokuapp.com/readings/";
-String settingsUrl = "https://powerbucket-test.herokuapp.com/readings/change_settings/";
-char * userName   = "josephabbate";
-char * userPass   = "Soccerturtle3";
+String serverName="powerbucket-test.herokuapp.com"; //"http://127.0.0.1:8000/";
+char * userName   = "173sh-arduino";
+char * userPass   = "173sh-arduino";
 const char * headerkeys[] = {"Set-Cookie"};
 size_t headerkeyssize = 1; //sizeof(headerkeys) / sizeof(char*);
 
@@ -68,11 +66,12 @@ void setup() {
   // baud rate
   Serial.begin(115200);
   pinMode (LED_BUILTIN, OUTPUT);//Specify that LED pin is output
-  
+
+  unsigned long start_time=millis();
   // tutorial disables brownout detection
   //WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
   WiFi.begin(ssid, password);
-  Serial.println("Connecting");
+  Serial.println("Connecting: "+String(millis()-start_time)+"ms");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
@@ -85,6 +84,15 @@ void setup() {
   // Check boot Deep Sleep saved state
   if (bootCount == 0) {
     Serial.println("First Start, bootCount = 0");
+    //startCameraServer();
+  
+    Serial.print("Camera Ready! Use 'http://");
+    Serial.print(WiFi.localIP());
+    Serial.println("' to connect");
+  
+    Serial.println("Starting webserver delay");
+    delay(30000);
+    Serial.println("Finishing webserver delay");
   }
   else {
     Serial.println("Waking up, bootCount != 0");
@@ -124,11 +132,8 @@ void setup() {
     config.fb_count = 1;
   }
 
-
-
-
-
-    
+  
+  Serial.println("Begin camera startup: "+String(millis()-start_time)+"ms");
   // camera init
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
@@ -136,14 +141,19 @@ void setup() {
     delay(1000);
     ESP.restart();
   }
-    camera_fb_t * fb = NULL;
+  camera_fb_t * fb = NULL;
+  Serial.println("Begin setting flash: "+String(millis()-start_time)+"ms");
 
   // prepare flash
   rtc_gpio_hold_dis(GPIO_NUM_4);
   digitalWrite(LED_BUILTIN, HIGH);
   // take picture
+  Serial.println("Begin delaying before taking picture: "+String(millis()-start_time)+"ms");
+  delay(5000);
+  Serial.println("Begin taking picture: "+String(millis()-start_time)+"ms");
   fb = esp_camera_fb_get();
   // turn off flash
+  Serial.println("Begin turning off flash: "+String(millis()-start_time)+"ms"); 
   digitalWrite(LED_BUILTIN, LOW);
   rtc_gpio_hold_en(GPIO_NUM_4);
   if(!fb) {
@@ -151,89 +161,118 @@ void setup() {
     delay(1000);
     ESP.restart();
   }
+
   
-  
-
-  if (bootCount == 0) {
-      startCameraServer();
-    
-      Serial.print("Camera Ready! Use 'http://");
-      Serial.print(WiFi.localIP());
-      Serial.println("' to connect");
-    
-      Serial.println("Starting webserver delay");
-      delay(20000);
-      Serial.println("Finishing webserver delay");
-  }
-
-
   
   /* After webserver, run Power Bucket script */
 
-  
-  HTTPClient http;
-  http.setReuse(true);
-  String serverPath = loginUrl;
-  // Your Domain name with URL path or IP address with path
-  http.begin(serverPath.c_str());
-  // allows us to see the csrf token from the initial GET below
-  http.collectHeaders(headerkeys, headerkeyssize);
-  // $CURL_BIN $LOGIN_URL > /dev/null
-  int httpCode = http.GET();
-  // specifies format that we'll give post request, 
-  // "csrfmiddlewaretoken=$DJANGO_TOKEN&username=$YOUR_USER&password=$YOUR_PASS"
-  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-  // grab csrf token from the header
-  int index = 0;
-  char*  cookie = strdup(http.header(index).c_str());
-  // this first call extracts "csrftoken"
-  char* csrftoken = strtok(cookie, "=;");
-  // this call extracts the csrf token from the Set-Cookie header
-  csrftoken = strtok(NULL, "=;");
-  // Put csrf token into response cookie 
-  char newcookie[1000];
-  strcpy(newcookie, "csrftoken=");
-  strcat(newcookie, csrftoken);
-  http.addHeader("Cookie", newcookie);
-  // Post the data (including csrf token)
-  char httpRequestData[1000];
-  strcpy(httpRequestData, "csrfmiddlewaretoken=");
-  strcat(httpRequestData, csrftoken);
-  strcat(httpRequestData, "&username=");
-  strcat(httpRequestData, userName);
-  strcat(httpRequestData, "&password=");
-  strcat(httpRequestData, userPass);
-  http.POST(httpRequestData);
-  String payload = http.getString();
-  
-  // below will be blank unless there's an error
-  Serial.println(payload);
-  // set sessionid
-  char*  test = strdup(http.header(index).c_str());
-  //Serial.println("Second cookie");
-  //Serial.println(test);
-  // this first call extracts "sessionid"
-  char* sessionid = strtok(test, "=;");
-  // this call extracts the sessionid from the Set-Cookie header
-  sessionid = strtok(NULL, "=;");
-  strcat(newcookie, "; sessionid=");
-  strcat(newcookie, sessionid);
-  
-  String serverName="powerbucket-test.herokuapp.com";
-  String serverExtension="/readings/submission/";
+/*
+  Serial.println("Begin camera startup: "+String(millis()-start_time)+"ms");
+  // camera init
+  esp_err_t err = esp_camera_init(&config);
+  if (err != ESP_OK) {
+    Serial.printf("Camera init failed with error 0x%x", err);
+    delay(1000);
+    ESP.restart();
+  }
+  camera_fb_t * fb = NULL;
+  Serial.println("Begin setting flash: "+String(millis()-start_time)+"ms");
+
+  // prepare flash
+  rtc_gpio_hold_dis(GPIO_NUM_4);
+  digitalWrite(LED_BUILTIN, HIGH);
+  // take picture
+  Serial.println("Begin delaying before taking picture: "+String(millis()-start_time)+"ms");
+  delay(5000);
+  Serial.println("Begin taking picture: "+String(millis()-start_time)+"ms");
+  fb = esp_camera_fb_get();
+  // turn off flash
+  Serial.println("Begin turning off flash: "+String(millis()-start_time)+"ms"); 
+  digitalWrite(LED_BUILTIN, LOW);
+  rtc_gpio_hold_en(GPIO_NUM_4);
+  if(!fb) {
+    Serial.println("Camera capture failed");
+    delay(1000);
+    ESP.restart();
+  }
+  */
+
   const int serverPort=80;
   // make and send the message to post the pic to the website 
   WiFiClient client;
   if (client.connect(serverName.c_str(), serverPort)) {
-
+    Serial.println("Connected to website: "+String(millis()-start_time)+"ms");
+    client.println("GET /accounts/login/ HTTP/1.1");
+    client.println("Host: " + serverName);
+    client.println("Accept: */*");
+    client.println("Referer: http://powerbucket-test.herokuapp.com/accounts/login/");
+    client.println();
+    // for debugging - get the website response
+    int timoutTimer = 10000;
+    long startTimer = millis();
+    String getBody;
     
-    Serial.println("Connected to Website (heroku)");
-  
+    while ((startTimer + timoutTimer) > millis()) {
+      //Serial.print(".");
+      delay(100);      
+      while (client.available()) {
+        char c = client.read();
+        getBody+=String(c);
+      }
+    }
+    //Serial.println(getBody);
+    // this call extracts the csrf token from the Set-Cookie header
+    String delimiter = "csrftoken=";
+    int token_start = getBody.indexOf(delimiter) + delimiter.length();//+length(delimiter);
+    int token_end = getBody.indexOf(";",token_start);
+    String csrftoken = getBody.substring(token_start,token_end);
+    //Serial.println("Cookie: "+csrftoken);
+    Serial.println();
+    Serial.println("Extracted csrf token: "+String(millis()-start_time)+"ms");
 
+    String postData="csrfmiddlewaretoken="+csrftoken+"&username="+userName+"&password="+userPass;
+    client.println("POST /accounts/login/ HTTP/1.1");
+    client.println("Host: " + serverName);
+    client.println("Accept: */*");
+    client.println("Referer: http://powerbucket-test.herokuapp.com/accounts/login/");
+    client.println("Cookie: csrftoken="+csrftoken);
+    client.println("Content-Length: "+String(postData.length()));
+    client.println("Content-Type: application/x-www-form-urlencoded");
+    client.println();
+    client.println(postData);
+    client.println();
+    
+    // for debugging - get the website response
+    startTimer = millis();
+    getBody="";
+    
+    while ((startTimer + timoutTimer) > millis()) {
+      Serial.print(".");
+      delay(100);      
+      while (client.available()) {
+        char c = client.read();
+        getBody+=String(c);
+      }
+    }
+    //Serial.println(getBody);
+    // this first call extracts "csrftoken"
+    // this call extracts the csrf token from the Set-Cookie header
+    delimiter = "sessionid=";
+    token_start = getBody.indexOf(delimiter) + delimiter.length();//+length(delimiter);
+    token_end = getBody.indexOf(";",token_start);
+    String sessionid = getBody.substring(token_start,token_end);
+    //Serial.println("Session id: "+sessionid);
+    Serial.println();
+    Serial.println("Logged in and extracted session id: "+String(millis()-start_time)+"ms");
+
+    // write submission
     // this can be anything you want - just a boundary for sending the message
     String boundary="PowerBucket";
-    String csrf_head="--"+boundary+"\r\nContent-Disposition: form-data; name=\"csrfmiddlewaretoken\"\r\n\r\n"+String(csrftoken)+"\r\n";
-    String time_head="--"+boundary+"\r\nContent-Disposition: form-data; name=\"time\"\r\n\r\n2021-02-14 18:51:03\r\n";
+    Serial.println();
+    Serial.println("csrftoken: "+csrftoken);
+    String csrf_head="--"+boundary+"\r\nContent-Disposition: form-data; name=\"csrfmiddlewaretoken\"\r\n\r\n"+csrftoken+"\r\n";
+    // hack: if the time is before the beginning of the year 2000, website sets the time for you to be now
+    String time_head="--"+boundary+"\r\nContent-Disposition: form-data; name=\"time\"\r\n\r\n1999-01-01 00:00:00\r\n";
     String firstNum_head="--"+boundary+"\r\nContent-Disposition: form-data; name=\"firstNum\"\r\n\r\n"+String(1)+"\r\n";
     String secondNum_head="--"+boundary+"\r\nContent-Disposition: form-data; name=\"secondNum\"\r\n\r\n"+String(1)+"\r\n";
     String thirdNum_head="--"+boundary+"\r\nContent-Disposition: form-data; name=\"thirdNum\"\r\n\r\n"+String(1)+"\r\n";
@@ -241,19 +280,22 @@ void setup() {
     String fifthNum_head="--"+boundary+"\r\nContent-Disposition: form-data; name=\"fifthNum\"\r\n\r\n"+String(1)+"\r\n";
     String pic_head="--"+boundary+"\r\nContent-Disposition: form-data; name=\"picture\"; filename=\"esp32-cam.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n";
     String pic_tail="\r\n--"+boundary+"--\r\n";
-    String head=csrf_head+pic_head; //time_head+firstNum_head+secondNum_head+thirdNum_head+fourthNum_head+fifthNum_head+pic_head;
+    
+    //String head=csrf_head+pic_head; 
+    String head=csrf_head+time_head+firstNum_head+secondNum_head+thirdNum_head+fourthNum_head+fifthNum_head+pic_head;
     String tail=pic_tail;
+
+    Serial.println("Done prepping POST data: "+String(millis()-start_time)+"ms");
+    
     uint32_t imageLen = fb->len;
-    //uint32_t extraLen = head.length() + tail.length(); //new_head.length() + 2*tail.length();
-    //uint32_t totalLen = imageLen + extraLen;
     uint8_t *fbBuf = fb->buf;
     size_t fbLen = fb->len;
     uint32_t totallen=head.length()+imageLen+tail.length();
     
-    client.println("POST " + serverExtension + " HTTP/1.1");
+    client.println("POST /readings/submission/ HTTP/1.1");
     client.println("Host: " + serverName);
     client.println("Referer: http://powerbucket-test.herokuapp.com/accounts/login/");
-    client.println("Cookie: " + String(newcookie));
+    client.println("Cookie: csrftoken=" + csrftoken + "; sessionid=" + sessionid);
     client.println("Content-Length: "+String(totallen));
     client.println("Content-Type: multipart/form-data; boundary="+boundary);
     client.println();
@@ -269,33 +311,29 @@ void setup() {
       }
     }  
     client.print(tail);
+    
+    startTimer = millis();
+    getBody="";
+
+    while ((startTimer + timoutTimer) > millis()) {
+      Serial.print(".");
+      delay(100);      
+      while (client.available()) {
+        char c = client.read();
+        getBody+=String(c);
+      }
+    }
+    Serial.println(getBody);
+    
+    Serial.println("Posted reading submission to website: "+String(millis()-start_time)+"ms");
     esp_camera_fb_return(fb);
-
-    client.stop();
-    
-    // for debugging - get the website response
-    int timoutTimer = 10000;
-    long startTimer = millis();
-    boolean state = false;
-    String getAll;
-    String getBody;
-  
-    //Serial.println(getBody);
-    delay(10000);  // this delay gives 10s for uploading to website
-
-    
   }
-  else {
-    Serial.println("Failed to connect to Website (heroku)");
-  }
-
   
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
 
   Serial.println("trying to deep sleep");
   bootCount = 1;
   esp_deep_sleep_start();
-  
 }
 
 void loop() {
